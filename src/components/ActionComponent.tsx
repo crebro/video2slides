@@ -1,12 +1,15 @@
 import { useState, useRef } from 'react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import axios from 'axios';
 
 export default function ActionComponent() {
   const [loaded, setLoaded] = useState(false);
     const ffmpegRef = useRef(new FFmpeg());
     const videoRef = useRef<HTMLVideoElement>(null);
     const messageRef = useRef<HTMLParagraphElement>(null);
+    const ytDlpDownloadStreamOutput = useState<string>();
+    const urlInputRef = useRef<HTMLInputElement>(null);
 
     const load = async () => {
         const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'
@@ -35,6 +38,13 @@ export default function ActionComponent() {
             URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
     }
 
+    const ytdlpDownload = async () => {
+        if (!urlInputRef.current) return;
+        const streamResponse = await axios.get(encodeURI(`http://127.0.0.1:5001/video2doc-e17c9/us-central1/forwardDlpRequest?url=${urlInputRef.current.value}`), {responseType: "stream"});
+        streamResponse.data.on('data', (chunk: any) => {
+            console.log('Received chunk:', chunk);
+        });
+    }
 
 
   return (
@@ -90,10 +100,10 @@ export default function ActionComponent() {
                                             <path d="M14 2v4a2 2 0 0 0 2 2h4"></path>
                                         </g>
                                     </svg>
-                                    <input type="text" className="grow" placeholder="... add your link here" />
+                                    <input ref={urlInputRef} type="text" className="grow" placeholder="... add your link here" />
                                 </label>
                                 <div className='relative mt-2'>
-                                    <button className="btn btn-secondary w-1/2">Get Document</button>
+                                    <button onClick={() => ytdlpDownload()} className="btn btn-secondary w-1/2">Get Document</button>
                                     <div className="tooltip absolute ml-2 h-full" data-tip="When you click on get document, the ffmpeg processing library [~31 mb] will be downloaded to process your request on your own machine.">
                                         <div className='flex items-center justify-center h-full w-6'>
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">
