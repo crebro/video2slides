@@ -7,22 +7,22 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 
-import {onRequest} from "firebase-functions/v2/https";
+import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { PassThrough } from 'stream';
 
-exports.forwardDlpRequest = onRequest({cors: true}, async (request, response) => {
-    logger.info("Received request to forward DLP request", {structuredData: true});
+exports.forwardDlpRequest = onRequest({ cors: true }, async (request, response) => {
+  logger.info("Received request to forward DLP request", { structuredData: true });
 
-     try {
+  try {
     const urlinput = request.query.url; // Assuming URL comes as query param
     if (!urlinput) {
       response.status(400).send('URL parameter is required');
     }
 
     const streamResponse = await axios.get(
-      encodeURI(`https://ytdlp.online/stream?command=${urlinput} -f 136+140`), 
+      encodeURI(`https://ytdlp.online/stream?command=${urlinput}`),
       {
         responseType: 'stream',
         timeout: 30000 // 30-second timeout
@@ -37,7 +37,7 @@ exports.forwardDlpRequest = onRequest({cors: true}, async (request, response) =>
 
     // Create a pass-through stream for better error handling
     const passThrough = new PassThrough();
-    
+
     // Pipe the axios stream through our pass-through to the response
     streamResponse.data.pipe(passThrough).pipe(response);
 
@@ -58,7 +58,7 @@ exports.forwardDlpRequest = onRequest({cors: true}, async (request, response) =>
 
   } catch (error) {
     logger.error('Proxy error:', error);
-    
+
     if (axios.isAxiosError(error)) {
       if (error.response) {
         // Forward error response from upstream
@@ -68,8 +68,46 @@ exports.forwardDlpRequest = onRequest({cors: true}, async (request, response) =>
       }
       response.status(500).send(error.message || 'Upstream request failed');
     }
-    
+
     response.status(500).send('Internal server error');
   }
 
+});
+
+
+exports.fileProxy = onRequest({cors: true}, async (req, res) => {
+  const url = req.query.url;
+
+  if (!url) {
+    res.status(400).send('Missing URL parameter');
+    return;
+  }
+
+  try {
+    const response = await axios.get(url.toString(), {
+      responseType: 'arraybuffer',
+    });
+
+    if (response.headers['content-type']) {
+      res.set('Content-Type', response.headers['content-type']);
+    }
+
+    res.status(response.status).send(response.data);
+  } catch (error) {
+    console.error('Error fetching file:', error);
+
+    const axiosError = error as AxiosError;
+    if (axiosError.response) {
+      // Forward the status code and message from the upstream error
+      res.status(axiosError.response.status)
+        .send(`Failed to fetch: ${axiosError.message}`);
+    } else if (axiosError.request) {
+      // The request was made but no response was received
+      res.status(504).send('Upstream server did not respond');
+    } else {
+      // Something happened in setting up the request
+      res.status(500).send('Internal server error');
+
+    }
+  }
 });
